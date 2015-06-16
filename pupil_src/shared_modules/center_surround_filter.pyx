@@ -8,39 +8,48 @@
 ----------------------------------------------------------------------------------~(*)
 '''
 
+cimport cython
 
+cdef struct point_t :
+   int    r
+   int    c
 
-ctypedef struct point_t:
-   int r,c
-
-
-ctypedef struct square_t:
+cdef struct square_t:
     point_t s
     point_t e
     int a
     float f
 
-ctypedef struct eye_t:
+cdef struct eye_t:
     square_t outer
     square_t inner
-    int w_half,w,h
+    int w_half
+    int w
+    int h
 
 
-cdef inline float area(const float *img,point_t size,point_t start,point_t end,point_t offset):
-    # use like in numpy including start excluding end
-    # 0-based indecies
-    # this is because the integral image has w+1 and h+1
-    return    img[(offset.r + end.r  ) * size.c + offset.c + end.c] + img[(offset.r + start.r) * size.c + offset.c + start.c] - img[(offset.r + start.r) * size.c + offset.c + end.c] - img[(offset.r + end.r  ) * size.c + offset.c + start.c]
+@cython.boundscheck(False)
+@cython.wraparound(False)
+cdef inline float area(int[:,::1] img,point_t size,point_t start,point_t end,point_t offset):
+  return    img[offset.r + end.r ,offset.c + end.c]\
+        + img[offset.r + start.r, offset.c + start.c]\
+        - img[offset.r + start.r, offset.c + end.c]\
+        - img[offset.r + end.r,offset.c + start.c]
 
-cdef inline eye_t make_eye(int h):
+@cython.cdivision(True)
+cdef inline eye_t make_eye(int h) nogil:
     cdef int w = 3*h
     cdef eye_t eye
     eye.h = h
     eye.w = w
-    eye.outer.s = point_t(0,0)
-    eye.outer.e = point_t(w,w)
-    eye.inner.s = point_t(h,h)
-    eye.inner.e = point_t(h+h,h+h)
+    eye.outer.s.r = 0
+    eye.outer.s.c = 0
+    eye.outer.e.r = w
+    eye.outer.e.c = w
+    eye.inner.s.r = h
+    eye.inner.s.c = h
+    eye.inner.e.r = h+h
+    eye.inner.e.c = h+h
     eye.inner.a = h*h
     eye.outer.a = w*w
     eye.outer.f =  1.0/eye.outer.a
@@ -48,92 +57,71 @@ cdef inline eye_t make_eye(int h):
     eye.w_half = w/2
     return eye
 
-
-def filter(img, int min_w=10,int max_w=100):
-    # Algorithm based on:
-    # Robust real-time pupil tracking in highly off-axis images
-    # Lech Świrski Andreas Bulling Neil A. Dodgson
-    # Computer Laboratory, University of Cambridge, United Kingdom
-    # Eye Tracking Research & Applications 2012
-
-    cdef int x_pos,y_pos,width
-    cdef float response = 0
-
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def fil(int[:,::1] img, int min_w=10,int max_w=100):
     cdef point_t img_size
-    img_size.r  = img.shape[0]
-    img_size.c = img.shape[1]
+    img_size.r =  img.shape[0]
+    img_size.c =  img.shape[1]
     cdef int min_h = min_w/3
     cdef int max_h = max_w/3
-    cdef int h, i, j
-    cdef  float best_response = -10000
-    cdef point_t best_pos = point_t(0,0)
+    cdef int h=0, i=0, j=0
+    cdef float best_response = -10000
+    cdef point_t best_pos
     cdef int best_h = 0
     cdef int h_step = 4
     cdef int step = 5
-
-    for (h = min_h h < max_h h+=h_step)
-        {
-            eye_t eye = make_eye(h)
-            #// printf("inner factor%f outer.factor %f center %i \n",eye.inner.f,eye.outer.f,(int)eye.w_half )
-            for (i=0 i<rows-eye.w i +=step)
-            {
-                for (j=0 j<cols-eye.w j+=step)
-                {
-                    #// printf("|%2.0f",img[i * cols + j])
-                    point_t offset = {i,j}
-                    float response =  eye.outer.f*area(img,img_size,eye.outer.s,eye.outer.e,offset)
-                                     +eye.inner.f*area(img,img_size,eye.inner.s,eye.inner.e,offset)
-                    #// printf("| %5.2f ",response)
-                    if(response > best_response){
-                        #// printf("!")
-                        best_response = response
-                        best_pos = (point_t){i,j}
-                        #// printf("%i %i", (int)best_pos.r,(int)best_pos.c)
-                        best_h = eye.h
-                    }
-                }
-                #// printf("\n")
-            }
-        }
+    cdef eye_t eye
+    cdef point_t offset
+    cdef int x_pos,y_pos,width
+    cdef float response = 0
+    cdef float a,c,
+    cdef point_t b,d,e,f
 
 
 
-    #// now we refine the search at pixel resolution This hole part can be commented out if needed
-    point_t window_lower = {MAX(0,best_pos.r-step+1),MAX(0,best_pos.c-step+1)}
-    point_t window_upper = {MIN(img_size.r,best_pos.r+step),MIN(img_size.c,best_pos.c+step)}
-    for (h = best_h-h_step+1 h < best_h+h_step h+=1)
-        {
-            eye_t eye = make_eye(h)
-            #// printf("inner factor%f outer.factor %f center %i \n",eye.inner.f,eye.outer.f,(int)eye.w_half )
-            for (i=window_lower.r i<MIN(window_upper.r,img_size.r-eye.w) i +=1)
-            {
-                for (j=window_lower.c j<MIN(window_upper.c,img_size.c-eye.w) j +=1)
-                {
+    #for h in prange(min_h,max_h,h_step):
+    for h from min_h <= h < max_h by h_step:
+      eye = make_eye(h)
+      #for i in range(0,img_size.r-eye.w,step): #step is slow
+      for i from 0 <= i < img_size.r-eye.w by step:
+        #for j in range(0,img_size.c-eye.w,step): #step is slow
+        for j from 0 <= j < img_size.c-eye.w by step:
 
-                    #// printf("|%2.0f",img[i * cols + j])
-                    point_t offset = {i,j}
-                    float response =  eye.outer.f*area(img,img_size,eye.outer.s,eye.outer.e,offset)
-                                     +eye.inner.f*area(img,img_size,eye.inner.s,eye.inner.e,offset)
-                    #// ikiuprintf("| %5.2f ",response)
-                    if(response > best_response){
-                        #// printf("!")
-                        best_response = response
-                        best_pos = (point_t){i,j}
-                        #// printf("%i %i", (int)best_pos.r,(int)best_pos.c)
-                        best_h = eye.h
-                    }
-                }
-                #// printf("\n")
-            }
-        }
+          offset.r = i
+          offset.c = j
+
+          response = eye.outer.f*area(img,img_size,eye.outer.s,eye.outer.e,offset) + eye.inner.f*area(img,img_size,eye.inner.s,eye.inner.e,offset)
+          if(response  > best_response):
+            best_response = response
+            best_pos.r = i
+            best_pos.c = j
+            best_h = h
 
 
-    #// point_t start = {0,0}
-    #// point_t end = {1,1}
-    #// printf("FULL IMG SUM %1.0f\n",img[(img_size.r-1) * img_size.c + (img_size.c-1)] )
-    #// printf("AREA:%f\n",area(img,img_size,start,end,(point_t){0,0}))
+    cdef point_t window_lower
+    window_lower.r = max(0,best_pos.r-step+1)
+    window_lower.c = max(0,best_pos.c-step+1)
+
+
+    cdef point_t window_upper
+    window_upper.r = min(img_size.r,best_pos.r+step)
+    window_upper.c = min(img_size.c,best_pos.c+step)
+
+    for h in range(max(3,best_h-h_step+1),best_h+h_step):
+        eye = make_eye(h)
+        for i in range(window_lower.r,min(window_upper.r,img_size.r-eye.w)) :
+            for j in range(window_lower.c,min(window_upper.c,img_size.c-eye.w)):
+                offset.r = i
+                offset.c = j
+                response = eye.outer.f*area(img,img_size,eye.outer.s,eye.outer.e,offset) + eye.inner.f*area(img,img_size,eye.inner.s,eye.inner.e,offset)
+                if(response > best_response):
+                    best_response = response
+                    best_pos.r = i
+                    best_pos.c = j
+                    best_h = h
+
     x_pos = best_pos.r
     y_pos = best_pos.c
     width = best_h*3
-    response = best_response
-    return x_pos,y_pos,width,response
+    return x_pos,y_pos,width,best_response
