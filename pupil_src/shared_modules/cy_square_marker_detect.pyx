@@ -1,3 +1,5 @@
+# cython: profile=True
+
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
@@ -7,6 +9,7 @@
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
+
 
 import cv2
 import numpy as np
@@ -33,15 +36,21 @@ def get_close_markers(markers,centroids=None, min_distance=20):
 
 
 
-def decode(square_img,grid):
+cdef tuple decode(unsigned char[:,::1] square_img,int grid):
     step = square_img.shape[0]/grid
     start = step/2
     #look only at the center point of each grid cell
     msg = square_img[start::step,start::step]
     # border is: first row - last row and  first column - last column
-    if msg[0::grid-1,:].any() or msg[:,0::grid-1].any():
-        # logger.debug("This is not a valid marker: \n %s" %msg)
-        return None
+
+    for p in msg[0::grid-1,:]:
+        if p:
+            return None
+    for p in msg[:,0::grid-1]:
+        if p:
+            return None
+
+
     # strip border to get the message
     msg = msg[1:-1,1:-1]/255
 
@@ -99,7 +108,7 @@ def decode(square_img,grid):
     return angle,msg_int
 
 
-def correct_gradient(gray_img,r):
+cdef bint correct_gradient(unsigned char[:,::1] gray_img,r):
     # used just to increase speed - this simple check is still way to slow
     # lets assume that a marker has a black border
     # we check two pixels one outside, one inside both close to the border
@@ -108,10 +117,10 @@ def correct_gradient(gray_img,r):
     ratio = 5./sqrt(vector_across[0]**2+vector_across[1]**2) #we want to measure 5px away from the border
     vector_across = int(vector_across[0]*ratio) , int(vector_across[1]*ratio)
     #indecies are flipped because numpy is row major
-    outer = p1[1] - vector_across[1],  p1[0] - vector_across[0]
-    inner = p1[1] + vector_across[1] , p1[0] + vector_across[0]
+    cdef int  outer_x = p1[1] - vector_across[1],outer_y = p1[0] - vector_across[0]
+    cdef int inner_x = p1[1] + vector_across[1], inner_y = p1[0] + vector_across[0]
     try:
-        gradient = int(gray_img[outer]) - int(gray_img[inner])
+        gradient = int(gray_img[outer_x,outer_y]) - int(gray_img[inner_x,inner_y])
         return gradient > 20 #at least 20 shades darker inside
     except:
         #px outside of img frame, let the other method check
