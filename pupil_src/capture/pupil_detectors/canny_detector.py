@@ -22,7 +22,7 @@ from file_methods import Persistent_Dict
 import numpy as np
 from methods import *
 
-from c_methods import eye_filter
+from center_surround_filter import center_surround
 from glfw import *
 from gl_utils import  draw_gl_texture,adjust_gl_view, clear_gl_screen, draw_gl_point_norm, draw_gl_polyline,basic_gl_setup,make_coord_system_norm_based,make_coord_system_pixel_based
 from template import Pupil_Detector
@@ -33,13 +33,6 @@ from pyglui import ui
 # logging
 import logging
 logger = logging.getLogger(__name__)
-
-
-# try:
-#     np.euler_gamma #constant introduced with 1.8, numpy.__version__ will give you strings with non int chars...
-# except AttributeError as error:
-#     logger.error("This module requires numpy 1.8 or greater. Please upgrade your version of numpy.")
-#     raise error
 
 
 
@@ -120,8 +113,7 @@ class Canny_Detector(Pupil_Detector):
         # coarse pupil detection
         if self.coarse_detection:
             integral = cv2.integral(gray_img)
-            integral =  np.array(integral,dtype=np.float32)
-            x,y,w,response = eye_filter(integral,self.coarse_filter_min,self.coarse_filter_max)
+            x,y,w,response = center_surround(integral,self.coarse_filter_min,self.coarse_filter_max)
             p_r = Roi(gray_img.shape)
             if w>0:
                 p_r.set((y,x,y+w,x+w))

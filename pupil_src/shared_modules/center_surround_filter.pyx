@@ -59,7 +59,7 @@ cdef inline eye_t make_eye(int h) nogil:
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def fil(int[:,::1] img, int min_w=10,int max_w=100):
+def center_surround(int[:,::1] img, int min_w=10,int max_w=100):
     cdef point_t img_size
     img_size.r =  img.shape[0]
     img_size.c =  img.shape[1]
@@ -77,7 +77,6 @@ def fil(int[:,::1] img, int min_w=10,int max_w=100):
     cdef float response = 0
     cdef float a,c,
     cdef point_t b,d,e,f
-
 
 
     #for h in prange(min_h,max_h,h_step):
