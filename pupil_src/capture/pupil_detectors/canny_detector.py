@@ -72,7 +72,7 @@ class Canny_Detector(Pupil_Detector):
 
         #ellipse filter params
         self.inital_ellipse_fit_threshhold = 1.8
-        self.min_ratio = .3
+        self.min_ratio = .2
         self.pupil_min = self.session_settings.get('pupil_min',40.)
         self.pupil_max = self.session_settings.get('pupil_max',150.)
         self.target_size= 100.0

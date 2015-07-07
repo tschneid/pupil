@@ -42,7 +42,7 @@ from cv2_writer import CV_Writer
 
 # Pupil detectors
 from pupil_detectors import Canny_Detector
-
+from pupil_detectors.eye_model_2d import Eye_Model_2d
 
 
 def eye(g_pool,cap_src,cap_size,rx_from_world,eye_id=0):
@@ -181,7 +181,7 @@ def eye(g_pool,cap_src,cap_size,rx_from_world,eye_id=0):
     writer = None
 
     pupil_detector = Canny_Detector(g_pool)
-
+    eye_model = Eye_Model_2d(g_pool)
 
     # UI callback functions
     def set_scale(new_scale):
@@ -273,6 +273,9 @@ def eye(g_pool,cap_src,cap_size,rx_from_world,eye_id=0):
     fps_graph.update_rate = 5
     fps_graph.label = "%0.0f FPS"
 
+
+
+
     # Event loop
     while not g_pool.quit.value:
         # Get an image from the grabber
@@ -284,6 +287,12 @@ def eye(g_pool,cap_src,cap_size,rx_from_world,eye_id=0):
         except EndofVideoFileError:
             logger.warning("Video File is done. Stopping")
             break
+
+        # mtx = np.load(os.path.join(g_pool.user_dir,'camera_matrix.npy'))
+        # dist = np.load(os.path.join(g_pool.user_dir,"dist_coefs.npy"))
+
+        # newcameramtx, roi=cv2.getOptimalNewCameraMatrix(mtx,dist,cap.frame_size,1,cap.frame_size)
+        # frame.gray[:] = cv2.undistort(frame.gray, mtx, dist, None, newcameramtx)
 
 
         #update performace graphs
@@ -329,6 +338,10 @@ def eye(g_pool,cap_src,cap_size,rx_from_world,eye_id=0):
         # stream the result
         g_pool.pupil_queue.put(result)
 
+        if result["confidence"] > 0.9:
+            ellipse = result['center'],result['axes'],result['angle']
+            eye_model.add_observation(ellipse)
+        eye_model.fit()
 
         # GL drawing
         glfwMakeContextCurrent(main_window)
@@ -346,6 +359,7 @@ def eye(g_pool,cap_src,cap_size,rx_from_world,eye_id=0):
         draw_named_texture(g_pool.image_tex)
         # switch to work in pixel space
         make_coord_system_pixel_based((frame.height,frame.width,3),g_pool.flip)
+        eye_model.gl_display()
 
         if result['confidence'] >0:
             if result.has_key('axes'):
