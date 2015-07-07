@@ -181,7 +181,7 @@ def eye(g_pool,cap_src,cap_size,rx_from_world,eye_id=0):
     writer = None
 
     pupil_detector = Canny_Detector(g_pool)
-    eye_model = Eye_Model_2d(g_pool)
+    g_pool.eye_model = Eye_Model_2d(g_pool)
 
     # UI callback functions
     def set_scale(new_scale):
@@ -226,6 +226,8 @@ def eye(g_pool,cap_src,cap_size,rx_from_world,eye_id=0):
     glfwSwapInterval(0)
     glfwSetWindowPos(main_window,window_pos[0],window_pos[1])
 
+    def reset_model():
+        g_pool.eye_model = Eye_Model_2d(g_pool)
 
     #setup GUI
     g_pool.gui = ui.UI()
@@ -236,6 +238,7 @@ def eye(g_pool,cap_src,cap_size,rx_from_world,eye_id=0):
     general_settings.append(ui.Button('Reset window size',lambda: glfwSetWindowSize(main_window,frame.width,frame.height)) )
     general_settings.append(ui.Selector('display_mode',g_pool,setter=set_display_mode_info,selection=['camera_image','roi','algorithm'], labels=['Camera Image', 'ROI', 'Algorithm'], label="Mode") )
     general_settings.append(ui.Switch('flip',g_pool,label='Flip image display'))
+    general_settings.append(ui.Button('reset_model',reset_model))
     g_pool.display_mode_info = ui.Info_Text(g_pool.display_mode_info_text[g_pool.display_mode])
     general_settings.append(g_pool.display_mode_info)
     g_pool.sidebar.append(general_settings)
@@ -340,8 +343,8 @@ def eye(g_pool,cap_src,cap_size,rx_from_world,eye_id=0):
 
         if result["confidence"] > 0.9:
             ellipse = result['center'],result['axes'],result['angle']
-            eye_model.add_observation(ellipse)
-        eye_model.fit()
+            g_pool.eye_model.add_observation(ellipse)
+        g_pool.eye_model.fit()
 
         # GL drawing
         glfwMakeContextCurrent(main_window)
@@ -359,7 +362,7 @@ def eye(g_pool,cap_src,cap_size,rx_from_world,eye_id=0):
         draw_named_texture(g_pool.image_tex)
         # switch to work in pixel space
         make_coord_system_pixel_based((frame.height,frame.width,3),g_pool.flip)
-        eye_model.gl_display()
+        g_pool.eye_model.gl_display()
 
         if result['confidence'] >0:
             if result.has_key('axes'):

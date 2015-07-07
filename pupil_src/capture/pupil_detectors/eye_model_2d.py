@@ -45,9 +45,41 @@ class Eye_Model_2d(object):
 
 
 
-def dist_pt_line(pt,line):
+def dist_pt_lines(p, line):
+    x3,y3 = p
+    org ,direction = line[:,0],line[:,1]
+    x1,y1 = org[:,0],org[:,1]
+    dx21,dy21 = direction[:,0],direction[:,1]
+    # (y1,x1),(dy21,dx21) = line
 
-    d = norm(np.cross(l2-l1, l1-p))/norm(l2-l1)
+    lensq21 = dx21*dx21 + dy21*dy21
+
+    u = (x3-x1)*dx21 + (y3-y1)*dy21
+
+    u = u / lensq21
+    x = x1+ u * dx21
+    y = y1+ u * dy21
+    dx30 = x3-x
+    dy30 = y3-y
+    return np.sqrt( dx30**2 + dy30**2 )
+
+def dist_pt_line(p, line):
+    x3,y3 = p
+    org ,direction = line
+    x1,y1 = org
+    dx21,dy21 = direction
+    # (y1,x1),(dy21,dx21) = line
+
+    lensq21 = dx21*dx21 + dy21*dy21
+
+    u = (x3-x1)*dx21 + (y3-y1)*dy21
+
+    u = u / lensq21
+    x = x1+ u * dx21
+    y = y1+ u * dy21
+    dx30 = x3-x
+    dy30 = y3-y
+    return np.sqrt( dx30**2 + dy30**2 )
 
 def nearest_intersect_2D(lines):
     #finds the learest intersection of many lines (which may not be a real intersection)
@@ -76,16 +108,26 @@ class Center(object):
         self.resd = 0
         self.A = np.zeros((2,2))
         self.b = np.zeros((2,1))
+        self.lines = []
+        self.weights = []
 
     def add_line(self,line,weight):
-
-        vi = np.asmatrix(line[1])
-        vi = np.reshape(vi,(2,1))
-        pi = np.asmatrix(line[0])
-        pi = np.reshape(pi,(2,1))
+        self.lines.append(line)
+        self.weights.append(weight)
+        vi = np.asmatrix(line[1]).reshape((2,1))
+        pi = np.asmatrix(line[0]).reshape((2,1))
         Ivivi = np.identity(2) - vi*vi.T
         self.A += Ivivi *weight
         self.b += Ivivi *pi *weight
         self.center = np.linalg.lstsq(self.A, self.b)[0]
         # print self.center,self.resd,rank,s
+        print np.mean(dist_pt_lines(self.center,np.array(self.lines))*np.array(self.weights))
 
+
+if __name__ == '__main__':
+    line = ((100.,100.),(np.sin(np.pi/2),np.cos(np.pi/2)))
+
+    # line = np.array((line,)*1)
+    print line
+    pt = (0.,0.)
+    print dist_pt_line(pt,line)
