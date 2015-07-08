@@ -36,11 +36,27 @@ class Eye_Model_2d(object):
             x = 1000* np.cos(angle)
             y = 1000* np.sin(angle)
 
+            if 0.85<ratio<.86:
+                cygl.draw_points( [e[0]],color=cygl.RGBA(1.,0.,1,.3),size=3)
+
+
+            if 0.75<ratio<.76:
+                cygl.draw_points( [e[0]],color=cygl.RGBA(1.,0.,0,.3),size=3)
+
+            if 0.65<ratio<.66:
+                cygl.draw_points( [e[0]],color=cygl.RGBA(0.,1.,1,.3),size=3)
+
+            if 0.55<ratio<.56:
+                cygl.draw_points( [e[0]],color=cygl.RGBA(1.,0.,1,.3),size=3)
+
+            if 0.45<ratio<.46:
+                cygl.draw_points( [e[0]],color=cygl.RGBA(0.,0.,1,.3),size=3)
+
             # pts = cv2.ellipse2Poly( (int(e[0][0]),int(e[0][1])),
             #                                 (int(e[1][0]/2),int(e[1][1]/2)),
             #                                 int(e[2]),0,360,15)
             # cygl.draw_polyline(pts,1,cygl.RGBA(1.,0,0,.5))
-            cygl.draw_polyline( [(e[0][0]-x,e[0][1]-y),(e[0][0]+x,e[0][1]+y)] ,0.5,color)
+            # cygl.draw_polyline( [(e[0][0]-x,e[0][1]-y),(e[0][0]+x,e[0][1]+y)] ,0.5,color)
         cygl.draw_points( [self.center.center],color=cygl.RGBA(0.,0.,1,.3))
 
 

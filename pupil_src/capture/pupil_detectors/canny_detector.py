@@ -36,13 +36,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-# try:
-#     np.euler_gamma #constant introduced with 1.8, numpy.__version__ will give you strings with non int chars...
-# except AttributeError as error:
-#     logger.error("This module requires numpy 1.8 or greater. Please upgrade your version of numpy.")
-#     raise error
-
-
 
 class Canny_Detector(Pupil_Detector):
     """a Pupil detector based on Canny_Edges"""
@@ -188,7 +181,6 @@ class Canny_Detector(Pupil_Detector):
                             self.canny_thresh,
                             self.canny_thresh*self.canny_ratio,
                             apertureSize= self.canny_aperture)
-
 
         # remove edges in areas not dark enough and where the glint is (spectral refelction from IR leds)
         edges = cv2.min(edges, spec_mask)
@@ -604,3 +596,5 @@ class Canny_Detector(Pupil_Detector):
         self.session_settings['min_contour_size'] = self.min_contour_size
         self.session_settings['final_perimeter_ratio_range'] = self.final_perimeter_ratio_range
         self.session_settings.close()
+
+
