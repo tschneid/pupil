@@ -1,0 +1,17 @@
+<?xml version='1.0' encoding='windows-1252'?>
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+
+    <Product 
+		Name='Pupil Suite' Manufacturer='Pupil Labs UG (haftungsbeschränkt)'
+        Id='GUID' 
+        UpgradeCode='GUID'
+        Language='1033' Codepage='1252' Version='0.5.5'>
+		
+		
+    <Package Id='*' Keywords='Installer' Description="Installer for Pupil Capture and Pupil Player."
+        Comments='Pupil Suite contains the Capture and Player software component for usage with Pupil Dev or Pupil Pro eye tracker.' Manufacturer='Pupil Labs UG (haftungsbeschränkt)'
+        InstallerVersion='100' Languages='1033' Compressed='yes' SummaryCodepage='1252' />
+		
+		
+    </Product>
+</Wix>
