@@ -303,7 +303,13 @@ def eye(pupil_queue, timebase, pipe_to_world, is_alive_flag, user_dir, version, 
 
         cpu_graph = graph.Bar_Graph()
         cpu_graph.pos = (20,130)
-        cpu_graph.update_fn = ps.cpu_percent
+        def dummy_cpu_percent():
+            return 0
+        try:
+            cpu_graph.update_fn = ps.cpu_percent
+        except AttributeError:
+            cpu_graph.update_fn = dummy_cpu_percent
+            pass
         cpu_graph.update_rate = 5
         cpu_graph.label = 'CPU %0.1f'
 
