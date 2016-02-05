@@ -1,9 +1,9 @@
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
- Copyright (C) 2012-2015  Pupil Labs
+ Copyright (C) 2012-2016  Pupil Labs
 
- Distributed under the terms of the CC BY-NC-SA License.
+ Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
@@ -96,9 +96,8 @@ class Scan_Path(Plugin):
         # initialize the menu
         self.menu = ui.Scrolling_Menu('Scan Path')
         self.g_pool.gui.append(self.menu)
-
+        self.menu.append(ui.Button('Close',self.unset_alive))
         self.menu.append(ui.Slider('timeframe',self,min=0,step=0.1,max=5,label="duration in sec"))
-        self.menu.append(ui.Button('remove',self.unset_alive))
 
     def deinit_gui(self):
         if self.menu:

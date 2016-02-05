@@ -1,9 +1,9 @@
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
- Copyright (C) 2012-2015  Pupil Labs
+ Copyright (C) 2012-2016  Pupil Labs
 
- Distributed under the terms of the CC BY-NC-SA License.
+ Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
@@ -12,7 +12,7 @@ import os
 import cv2
 import numpy as np
 from methods import normalize
-import calibrate
+from finish_calibration import finish_calibration
 from pyglui.cygl.utils import draw_points_norm,RGBA
 from glfw import GLFW_PRESS
 import audio
@@ -20,7 +20,6 @@ import audio
 
 from pyglui import ui
 from plugin import Calibration_Plugin
-from gaze_mappers import Simple_Gaze_Mapper
 
 #logging
 import logging
@@ -58,10 +57,9 @@ class Natural_Features_Calibration(Calibration_Plugin):
 
 
     def deinit_gui(self):
-        if self.menu:
-            self.g_pool.calibration_menu.remove(self.menu)
+        if self.info:
             self.g_pool.calibration_menu.remove(self.info)
-            self.menu = None
+            self.info = None
         if self.button:
             self.g_pool.quickbar.remove(self.button)
             self.button = None
@@ -72,8 +70,6 @@ class Natural_Features_Calibration(Calibration_Plugin):
             self.stop()
         else:
             self.start()
-
-
 
     def start(self):
         audio.say("Starting Calibration")
@@ -87,21 +83,7 @@ class Natural_Features_Calibration(Calibration_Plugin):
         logger.info("Stopping Calibration")
         self.active = False
         self.button.status_text = ''
-
-        cal_pt_cloud = calibrate.preprocess_data(self.pupil_list,self.ref_list)
-        logger.info("Collected %s data points." %len(cal_pt_cloud))
-        if len(cal_pt_cloud) < 20:
-            logger.warning("Did not collect enough data.")
-            return
-        cal_pt_cloud = np.array(cal_pt_cloud)
-
-        img_size = self.first_img.shape[1],self.first_img.shape[0]
-        map_fn,params = calibrate.get_map_from_cloud(cal_pt_cloud,img_size,return_params=True)
-        np.save(os.path.join(self.g_pool.user_dir,'cal_pt_cloud.npy'),cal_pt_cloud)
-
-        #replace gaze mapper
-        self.g_pool.plugins.add(Simple_Gaze_Mapper,args={'params':params})
-
+        finish_calibration(self.g_pool,self.pupil_list,self.ref_list)
 
 
     def update(self,frame,events):
@@ -127,6 +109,7 @@ class Natural_Features_Calibration(Calibration_Plugin):
                     self.count -=1
 
                     ref = {}
+                    ref["screen_pos"] = nextPts
                     ref["norm_pos"] = self.pos
                     ref["timestamp"] = frame.timestamp
                     self.ref_list.append(ref)

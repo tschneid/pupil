@@ -1,9 +1,9 @@
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
- Copyright (C) 2012-2015  Pupil Labs
+ Copyright (C) 2012-2016  Pupil Labs
 
- Distributed under the terms of the CC BY-NC-SA License.
+ Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
@@ -88,10 +88,10 @@ if os_name == "Linux":
             lines = ret.split("\n")
             # logger.debug(lines)
             devices = [l.split(',')[0] for l in lines[1:] if not l.startswith("  ") and l]
-
-            device_names = [w.split(":")[-1] for w in devices]
-            device_names = [w[1:] for w in device_names]
-            for d,idx in zip(device_names,range(len(device_names))):
+            logger.debug(devices)
+            device_names = [w.split(":")[-1][1:] for w in devices]
+            device_ids = [w.split(":")[0][-1] for w in devices]
+            for d,idx in zip(device_names,device_ids):
                 self[d] = idx
 
 
@@ -144,13 +144,13 @@ else:
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
-
-
-    beep()
-    sleep(1)
-    tink()
-    cap = Audio_Capture('test.mp3')
-    say("Hello, I am Pupil's audio module.")
-    sleep(3)
-    cap = None
     print Audio_Input_Dict()
+
+
+    # beep()
+    # sleep(1)
+    # tink()
+    # cap = Audio_Capture('test.mp3')
+    # say("Hello, I am Pupil's audio module.")
+    # sleep(3)
+    # cap = None

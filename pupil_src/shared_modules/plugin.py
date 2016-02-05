@@ -1,9 +1,9 @@
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
- Copyright (C) 2012-2015  Pupil Labs
+ Copyright (C) 2012-2016  Pupil Labs
 
- Distributed under the terms of the CC BY-NC-SA License.
+ Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
@@ -11,7 +11,7 @@ import os,sys
 import logging
 logger = logging.getLogger(__name__)
 import importlib
-
+from time import time
 
 '''
 A simple example Plugin: 'display_recent_gaze.py'
@@ -32,15 +32,21 @@ class Plugin(object):
     # uniqueness = 'not_unique'
     # uniqueness = 'by_base_class'
 
+
+
+    # between 0 and 1 this indicated where in the plugin excecution order you plugin lives:
+    # <.5  are things that add/mofify information that will be used by other plugins and rely on untouched data.
+    # You should not edit frame if you are here!
+    # == .5 is the default.
+    # >.5 are things that depend on other plugins work like display , saving and streaming
+    #you can change this in __init__ for your instance or in the class definition
+    order = .5
+
     def __init__(self,g_pool):
         self._alive = True
         self.g_pool = g_pool
-        self.order = .5
-        # between 0 and 1 this indicated where in the plugin excecution order you plugin lives:
-        # <.5  are things that add/mofify information that will be used by other plugins and rely on untouched data.
-        # You should not edit frame if you are here!
-        # == .5 is the default.
-        # >.5 are things that depend on other plugins work like display , saving and streaming
+
+
 
     def init_gui(self):
         '''
@@ -108,10 +114,29 @@ class Plugin(object):
     def notify_all(self,notification):
         """
         call this to notify all other plugins with a notification:
-        notification is a dict in the format {'subject':'notification_name',['addional_field':'blah']}
+        notification is a dict in the format {'subject':'notification_name',['addional_field':'foo']}
+
+            adding 'record':True will make recorder save the notification during recording
+            adding 'network_propagate':True will send the event to other pupil sync nodes in the same group
+
+            if you want recording and network propagation to work make sure that the notification
+            is pickalable and can be recreated though repr+eval.
+
+            You may add more fields as you like.
+
+
         do not overwrite this method
         """
         self.g_pool.notifications.append(notification)
+
+    def notify_all_delayed(self,notification,delay = 3.0):
+        """
+        call this to notify all other plugins with a notification.
+        if will be published after a bit of time to allow you to adjust the slider and keep the loop repsonsive
+        do not overwrite this method
+        """
+        notification['_notify_time_'] = time()+delay
+        self.g_pool.delayed_notifications[notification['subject']] = notification
 
 
     @property
@@ -199,9 +224,10 @@ class Calibration_Plugin(Plugin):
 class Gaze_Mapping_Plugin(Plugin):
     '''base class for all calibration routines'''
     uniqueness = 'by_base_class'
+    order = 0.1
     def __init__(self,g_pool):
         super(Gaze_Mapping_Plugin, self).__init__(g_pool)
-        self.order = 0.1
+
 
 
 # Plugin manager classes and fns
@@ -214,6 +240,11 @@ class Plugin_List(object):
         self._plugins = []
         self.g_pool = g_pool
 
+        #add self as g_pool.plguins object to allow plugins to call the plugins list during init.
+        #this will be done again when the init returns but is kept there for readablitly.
+        self.g_pool.plugins = self
+
+        #now add plugins to plugin list.
         for initializer in plugin_initializers:
             name, args = initializer
             logger.debug("Loading plugin: %s with settings %s"%(name, args))
@@ -287,8 +318,9 @@ def import_runtime_plugins(plugin_dir):
     once a module is sucessfully imported any classes that are subclasses of Plugin
     are added to the runtime plugins list
 
-    any exceptions that are raised during parsing, import filtering and addion are silently ignored.
+    any exceptions that are raised during parsing, import filtering and addition are silently ignored.
     """
+
     runtime_plugins = []
     if os.path.isdir(plugin_dir):
         # we prepend to give the plugin dir content precendece
@@ -309,5 +341,5 @@ def import_runtime_plugins(plugin_dir):
                         logger.info('Added: %s'%member)
                         runtime_plugins.append(member)
             except Exception as e:
-                logger.warning("Failed to load '%s'. Reason: '%s' "%(d,e))
+                logger.debug("Failed to load '%s'. Reason: '%s' "%(d,e))
     return runtime_plugins

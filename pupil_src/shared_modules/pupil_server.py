@@ -1,9 +1,9 @@
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
- Copyright (C) 2012-2015  Pupil Labs
+ Copyright (C) 2012-2016  Pupil Labs
 
- Distributed under the terms of the CC BY-NC-SA License.
+ Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
@@ -42,10 +42,10 @@ class Pupil_Server(Plugin):
             self.menu = ui.Scrolling_Menu("Pupil Broadcast Server")
             self.g_pool.gui.append(self.menu)
 
+        self.menu.append(ui.Button('Close',self.close))
         help_str = "Pupil Message server: Using ZMQ and the *Publish-Subscribe* scheme"
         self.menu.append(ui.Info_Text(help_str))
         self.menu.append(ui.Text_Input('address',self,setter=self.set_server,label='Address'))
-        self.menu.append(ui.Button('Close',self.close))
 
 
     def deinit_gui(self):

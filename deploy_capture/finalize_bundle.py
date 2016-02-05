@@ -1,12 +1,13 @@
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
- Copyright (C) 2012-2015  Pupil Labs
+ Copyright (C) 2012-2016  Pupil Labs
 
- Distributed under the terms of the CC BY-NC-SA License.
+ Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
+
 import platform
 import sys, os
 from version import write_version_file,dpkg_deb_version
@@ -24,6 +25,11 @@ if platform.system() == 'Darwin':
     bundle_name = 'Pupil Capture %s MacOS'%dpkg_deb_version()
     bundle_dmg_name = 'Install Pupil Capture'
     src_dir = 'dist'
+    bundle_app_dir = os.path.join(src_dir,'Pupil Capture.app/' )
+    print "Codesigning now"
+    call("codesign -s 'Developer ID Application: Pupil Labs UG (haftungsbeschrankt) (R55K9ESN6B)' --deep '%s'"%bundle_app_dir,shell=True)
+    if call("spctl --assess --type execute '%s'"%bundle_app_dir,shell=True) != 0:
+        raise Exception("Codesinging  failed")
     call("ln -s /Applications/ %s/Applications"%src_dir,shell=True)
     call("hdiutil create -volname '%s' -srcfolder %s -format UDZO '%s.dmg'"%(bundle_dmg_name,src_dir,bundle_name),shell=True)
 
@@ -106,19 +112,11 @@ Terminal=false
 Icon=pupil-capture
 Categories=Application;
 Name[en_US]=Pupil Capture
-Actions=Binocular;Terminal;BinocularTerminal;
-
-[Desktop Action Binocular]
-Name= Binocular Mode
-Exec=/opt/pupil_capture/pupil_capture binocular
+Actions=Terminal;
 
 [Desktop Action Terminal]
 Name=Open in Terminal
-Exec=x-terminal-emulator -e pupil_capture
-
-[Desktop Action BinocularTerminal]
-Name=Open in Terminal Binocular
-Exec=x-terminal-emulator -e "pupil_capture binocular"'''
+Exec=x-terminal-emulator -e pupil_capture'''
         f.write(content)
     os.chmod(os.path.join(app_dir,'pupil_capture.desktop'),0644)
 

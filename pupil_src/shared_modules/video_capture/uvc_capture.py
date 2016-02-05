@@ -1,9 +1,9 @@
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
- Copyright (C) 2012-2015  Pupil Labs
+ Copyright (C) 2012-2016  Pupil Labs
 
- Distributed under the terms of the CC BY-NC-SA License.
+ Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
@@ -11,7 +11,7 @@
 import uvc
 from uvc import device_list,is_accessible
 #check versions for our own depedencies as they are fast-changing
-assert uvc.__version__ >= '0.4'
+assert uvc.__version__ >= '0.5'
 
 from fake_capture import Fake_Capture
 
@@ -89,14 +89,19 @@ class Camera_Capture(object):
             pass
 
         if "Pupil Cam1" in self.capture.name or "USB2.0 Camera" in self.capture.name:
-            self.capture.bandwidth_factor = 1.3
+            self.capture.bandwidth_factor = 1.8
             if "ID0" in self.capture.name or "ID1" in self.capture.name:
+                self.capture.bandwidth_factor = 1.3
                 try:
                     controls_dict['Auto Exposure Priority'].value = 1
                 except KeyError:
                     pass
                 try:
-                    controls_dict['Absolute Exposure Time'].value = 59
+                    controls_dict['Saturation'].value = 0
+                except KeyError:
+                    pass
+                try:
+                    controls_dict['Absolute Exposure Time'].value = 63
                 except KeyError:
                     pass
             try:
@@ -116,7 +121,7 @@ class Camera_Capture(object):
         return frame
 
     def get_now(self):
-        return time()
+        return uvc.get_time_monotonic()
 
     def get_timestamp(self):
         return self.get_now()-self.timebase.value
@@ -166,6 +171,9 @@ class Camera_Capture(object):
         if size != new_size:
             logger.warning("%s resolution capture mode not available. Selected %s."%(new_size,size))
         self.capture.frame_size = size
+
+        if hasattr(self,'on_frame_size_change'):
+            self.on_frame_size_change(size)
 
     @property
     def name(self):
@@ -219,7 +227,7 @@ class Camera_Capture(object):
         cameras = uvc.device_list()
         camera_names = ['Fake Capture']+[c['name'] for c in cameras]
         camera_ids = [None]+[c['uid'] for c in cameras]
-        self.menu.append(ui.Selector('uid',self,selection=camera_ids,labels=camera_names,label='Capture Device', setter=gui_init_cam_by_uid) )
+        self.menu.append(ui.Selector('uid',self,selection=camera_ids,labels=camera_names,label='Capture device', setter=gui_init_cam_by_uid) )
 
         sensor_control = ui.Growing_Menu(label='Sensor Settings')
         sensor_control.append(ui.Info_Text("Do not change these during calibration or recording!"))
@@ -228,7 +236,7 @@ class Camera_Capture(object):
         image_processing.collapsed=True
 
         sensor_control.append(ui.Selector('frame_size',self,setter=set_size, selection=self.capture.frame_sizes,label='Resolution' ) )
-        sensor_control.append(ui.Selector('frame_rate',self, selection=self.capture.frame_rates,label='Framerate' ) )
+        sensor_control.append(ui.Selector('frame_rate',self, selection=self.capture.frame_rates,label='Frame rate' ) )
 
 
         for control in self.capture.controls:

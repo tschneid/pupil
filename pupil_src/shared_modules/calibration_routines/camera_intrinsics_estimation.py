@@ -1,9 +1,9 @@
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
- Copyright (C) 2012-2015  Pupil Labs
+ Copyright (C) 2012-2016  Pupil Labs
 
- Distributed under the terms of the CC BY-NC-SA License.
+ Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
@@ -11,14 +11,14 @@
 import os
 import cv2
 import numpy as np
-from file_methods import save_object
-from gl_utils import adjust_gl_view,clear_gl_screen,basic_gl_setup
+from file_methods import save_object,load_object
+from gl_utils import adjust_gl_view,clear_gl_screen,basic_gl_setup,make_coord_system_pixel_based,make_coord_system_norm_based
 from methods import normalize
 
 
 import OpenGL.GL as gl
 from pyglui import ui
-from pyglui.cygl.utils import draw_polyline,draw_points,RGBA
+from pyglui.cygl.utils import draw_polyline,draw_points,RGBA,draw_gl_texture
 from pyglui.pyfontstash import fontstash
 from pyglui.ui import get_opensans_font_path
 from glfw import *
@@ -28,6 +28,71 @@ from plugin import Calibration_Plugin
 #logging
 import logging
 logger = logging.getLogger(__name__)
+
+
+#these are calibration we recorded. They are estimates and generalize our setup. Its always better to calibrate each camera.
+pre_recorded_calibrations = {
+                            'Pupil Cam1 ID2':{
+                                (1280, 720):{
+                                'dist_coefs': np.array([[-0.6746215 ,  0.46527537,  0.01448595, -0.00070578, -0.17128751]]),
+                                'camera_name': 'Pupil Cam1 ID2',
+                                'resolution': (1280, 720),
+                                'camera_matrix': np.array([[  1.08891909e+03,   0.00000000e+00,   6.67944178e+02],
+                                                             [  0.00000000e+00,   1.03230180e+03,   3.52772854e+02],
+                                                             [  0.00000000e+00,   0.00000000e+00,   1.00000000e+00]])
+                                    }
+                                },
+                            'Logitech Webcam C930e':{
+                                (1280, 720):{
+                                    'dist_coefs': np.array([[ 0.06330768, -0.17328079,  0.00074967,  0.000353  ,  0.07648477]]),
+                                    'camera_name': 'Logitech Webcam C930e',
+                                    'resolution': (1280, 720),
+                                    'camera_matrix': np.array([[ 739.72227378,    0.        ,  624.44490772],
+                                                                [   0.        ,  717.84832227,  350.46000651],
+                                                                [   0.        ,    0.        ,    1.        ]])
+                                    }
+                                },
+                            }
+
+
+def load_camera_calibration(g_pool):
+    if g_pool.app == 'capture':
+        try:
+            camera_calibration = load_object(os.path.join(g_pool.user_dir,'camera_calibration'))
+        except:
+            camera_calibration = None
+        else:
+            same_name = camera_calibration['camera_name'] == g_pool.capture.name
+            same_resolution =  camera_calibration['resolution'] == g_pool.capture.frame_size
+            if not (same_name and same_resolution):
+                logger.warning('Loaded camera calibration but camera name and/or resolution has changed.')
+                camera_calibration = None
+            else:
+                logger.info("Loaded user calibrated calibration for %s@%s."%(g_pool.capture.name,g_pool.capture.frame_size))
+
+        if not camera_calibration:
+            logger.debug("Trying to load pre recorded calibration.")
+            try:
+                camera_calibration = pre_recorded_calibrations[g_pool.capture.name][g_pool.capture.frame_size]
+            except KeyError:
+                logger.info("Pre recorded calibration for %s@%s not found."%(g_pool.capture.name,g_pool.capture.frame_size))
+            else:
+                logger.info("Loaded pre recorded calibration for %s@%s."%(g_pool.capture.name,g_pool.capture.frame_size))
+
+
+        if not camera_calibration:
+            logger.warning("Camera calibration not found please run Camera_Intrinsics_Estimation to calibrate camera.")
+
+
+        return camera_calibration
+
+    else:
+        raise NotImplementedError()
+
+
+
+
+
 
 
 # window calbacks
@@ -41,7 +106,6 @@ class Camera_Intrinsics_Estimation(Calibration_Plugin):
     """Camera_Intrinsics_Calibration
         This method is not a gaze calibration.
         This method is used to calculate camera intrinsics.
-
     """
     def __init__(self,g_pool,fullscreen = False):
         super(Camera_Intrinsics_Estimation, self).__init__(g_pool)
@@ -51,8 +115,6 @@ class Camera_Intrinsics_Estimation(Calibration_Plugin):
         self.img_points = []
         self.obj_points = []
         self.count = 10
-        self.img_shape = None
-
         self.display_grid = _make_grid()
 
         self._window = None
@@ -73,17 +135,35 @@ class Camera_Intrinsics_Estimation(Calibration_Plugin):
 
 
 
+        self.undist_img = None
+        self.show_undistortion = False
+        self.show_undistortion_switch = None
+
+
+        self.camera_calibration = load_camera_calibration(self.g_pool)
+        if self.camera_calibration:
+            logger.info('Loaded camera calibration. Click show undistortion to verify.')
+            logger.info('Hint: Straight lines in the real world should be straigt in the image.')
+            self.camera_intrinsics = self.camera_calibration['camera_matrix'],self.camera_calibration['dist_coefs'],self.camera_calibration['resolution']
+        else:
+            self.camera_intrinsics = None
+
+
     def init_gui(self):
 
         monitor_names = [glfwGetMonitorName(m) for m in glfwGetMonitors()]
         #primary_monitor = glfwGetPrimaryMonitor()
-        self.info = ui.Info_Text("Estimate Camera intrinsics of the world camera. This is only used for 3D marker tracking at the moment. Using an 11x9 asymmetrical circle grid. Click 'C' to capture a pattern.")
+        self.info = ui.Info_Text("Estimate Camera intrinsics of the world camera. Using an 11x9 asymmetrical circle grid. Click 'C' to capture a pattern.")
         self.g_pool.calibration_menu.append(self.info)
 
         self.menu = ui.Growing_Menu('Controls')
         self.menu.append(ui.Button('show Pattern',self.open_window))
         self.menu.append(ui.Selector('monitor_idx',self,selection = range(len(monitor_names)),labels=monitor_names,label='Monitor'))
         self.menu.append(ui.Switch('fullscreen',self,label='Use Fullscreen'))
+        self.show_undistortion_switch = ui.Switch('show_undistortion',self,label='show undistorted image')
+        self.menu.append(self.show_undistortion_switch)
+        if not self.camera_intrinsics:
+            self.show_undistortion_switch.read_only=True
         self.g_pool.calibration_menu.append(self.menu)
 
         self.button = ui.Thumb('collect_new',self,setter=self.advance,label='Capture',hotkey='c')
@@ -108,9 +188,13 @@ class Camera_Intrinsics_Estimation(Calibration_Plugin):
         return self.count
 
     def advance(self,_):
-        if self.count ==10:
+        if self.count == 10:
             logger.info("Capture 10 calibration patterns.")
             self.button.status_text = "%i to go" %(self.count)
+            self.calculated = False
+            self.img_points = []
+            self.obj_points = []
+
 
         self.collect_new = True
 
@@ -165,6 +249,7 @@ class Camera_Intrinsics_Estimation(Calibration_Plugin):
         self.window_should_close = True
 
     def close_window(self):
+        self.window_should_close=False
         if self._window:
             glfwDestroyWindow(self._window)
             self._window = None
@@ -172,11 +257,14 @@ class Camera_Intrinsics_Estimation(Calibration_Plugin):
 
     def calculate(self):
         self.calculated = True
+        self.count = 10
         rms, camera_matrix, dist_coefs, rvecs, tvecs = cv2.calibrateCamera(np.array(self.obj_points), np.array(self.img_points),self.g_pool.capture.frame_size)
         logger.info("Calibrated Camera, RMS:%s"%rms)
         camera_calibration = {'camera_matrix':camera_matrix,'dist_coefs':dist_coefs,'camera_name':self.g_pool.capture.name,'resolution':self.g_pool.capture.frame_size}
         save_object(camera_calibration,os.path.join(self.g_pool.user_dir,"camera_calibration"))
         logger.info("Calibration saved to user folder")
+        self.camera_intrinsics = camera_matrix,dist_coefs,self.g_pool.capture.frame_size
+        self.show_undistortion_switch.read_only=False
 
     def update(self,frame,events):
         if self.collect_new:
@@ -187,7 +275,6 @@ class Camera_Intrinsics_Estimation(Calibration_Plugin):
                 self.obj_points.append(self.obj_grid)
                 self.collect_new = False
                 self.count -=1
-                self.img_shape = img.shape
                 self.button.status_text = "%i to go"%(self.count)
 
 
@@ -198,6 +285,10 @@ class Camera_Intrinsics_Estimation(Calibration_Plugin):
         if self.window_should_close:
             self.close_window()
 
+        if self.show_undistortion:
+
+            adjusted_k,roi = cv2.getOptimalNewCameraMatrix(cameraMatrix= self.camera_intrinsics[0], distCoeffs=self.camera_intrinsics[1], imageSize=self.camera_intrinsics[2], alpha=0.5,newImgSize=self.camera_intrinsics[2],centerPrincipalPoint=1)
+            self.undist_img = cv2.undistort(frame.img, self.camera_intrinsics[0], self.camera_intrinsics[1],newCameraMatrix=adjusted_k)
 
     def gl_display(self):
 
@@ -208,6 +299,11 @@ class Camera_Intrinsics_Estimation(Calibration_Plugin):
         if self._window:
             self.gl_display_in_window()
 
+        if self.show_undistortion:
+            gl.glPushMatrix()
+            make_coord_system_norm_based()
+            draw_gl_texture(self.undist_img)
+            gl.glPopMatrix()
     def gl_display_in_window(self):
         active_window = glfwGetCurrentContext()
         glfwMakeContextCurrent(self._window)

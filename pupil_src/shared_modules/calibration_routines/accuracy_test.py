@@ -1,9 +1,9 @@
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
- Copyright (C) 2012-2015  Pupil Labs
+ Copyright (C) 2012-2016  Pupil Labs
 
- Distributed under the terms of the CC BY-NC-SA License.
+ Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
@@ -32,7 +32,7 @@ from pyglui.pyfontstash import fontstash
 from pyglui.ui import get_opensans_font_path
 from plugin import Calibration_Plugin
 from screen_marker_calibration import Screen_Marker_Calibration
-from calibrate import preprocess_data
+import calibrate
 #logging
 import logging
 logger = logging.getLogger(__name__)
@@ -145,6 +145,8 @@ class Accuracy_Test(Screen_Marker_Calibration,Calibration_Plugin):
             #always save gaze positions as opposed to pupil positons during calibration
             for pt in events.get('gaze_positions',[]):
                 if pt['confidence'] > self.g_pool.pupil_confidence_threshold:
+                    #we add an id for the calibration preprocess data to work as is usually expects pupil data.
+                    pt['id'] = 0
                     self.gaze_list.append(pt)
 
 
@@ -155,8 +157,8 @@ class Accuracy_Test(Screen_Marker_Calibration,Calibration_Plugin):
         self.active = False
         self.close_window()
 
-        pt_cloud = preprocess_data(self.gaze_list,self.ref_list)
-
+        matched_data = calibrate.closest_matches_monocular(self.gaze_list,self.ref_list)
+        pt_cloud = calibrate.preprocess_2d_data_monocular(matched_data)
         logger.info("Collected %s data points." %len(pt_cloud))
 
         if len(pt_cloud) < 20:
@@ -178,17 +180,13 @@ class Accuracy_Test(Screen_Marker_Calibration,Calibration_Plugin):
             logger.warning("Please run test first!")
             return
 
-        if self.world_size == None:
-            return
-
         pt_cloud = self.pt_cloud.copy()
-        res = self.world_size
+        res = self.g_pool.capture.frame_size
         pt_cloud[:,0:3:2] *= res[0]
         pt_cloud[:,1:4:2] *= res[1]
 
         field_of_view = self.fov
         px_per_degree = self.res/field_of_view
-        print px_per_degree
         # Accuracy is calculated as the average angular
         # offset (distance) (in degrees of visual angle)
         # between fixations locations and the corresponding

@@ -1,9 +1,9 @@
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
- Copyright (C) 2012-2015  Pupil Labs
+ Copyright (C) 2012-2016  Pupil Labs
 
- Distributed under the terms of the CC BY-NC-SA License.
+ Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
@@ -57,17 +57,15 @@ class Log_Display(Plugin):
         self.log_handler.setLevel(logging.INFO)
 
     def on_log(self,record):
-        if self.alpha <= 1.5:
+        if self.alpha < 1.0:
             self.rendered_log = []
             self.alpha = 0
-
         self.should_redraw = True
         self.rendered_log.append(record)
         self.alpha += duration_from_level(record.levelname) + len(str(record.msg))/100.
 
         self.rendered_log = self.rendered_log[-10:]
         self.alpha = min(self.alpha,6.)
-
 
     def on_window_resize(self,window,w,h):
         self.window_size = w,h

@@ -1,22 +1,20 @@
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
- Copyright (C) 2012-2015  Pupil Labs
+ Copyright (C) 2012-2016  Pupil Labs
 
- Distributed under the terms of the CC BY-NC-SA License.
+ Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
 
-import os, sys, platform, errno
-import getpass
+import os, sys, platform, errno, getpass
 from pyglui import ui
 import numpy as np
 from scipy.interpolate import UnivariateSpline
 from plugin import Plugin
 from time import strftime,localtime,time,gmtime
 from shutil import copy2
-from glob import glob
 from audio import Audio_Input_Dict
 from file_methods import save_object
 from av_writer import JPEG_Writer, AV_Writer, Audio_Capture
@@ -24,7 +22,6 @@ from av_writer import JPEG_Writer, AV_Writer, Audio_Capture
 import logging
 logger = logging.getLogger(__name__)
 
-import subprocess as sp
 
 
 def get_auto_name():
@@ -143,10 +140,10 @@ class Recorder(Plugin):
         self.menu.append(ui.Text_Input('rec_dir',self,setter=self.set_rec_dir,label='Path to recordings'))
         self.menu.append(ui.Text_Input('session_name',self,setter=self.set_session_name,label='Recording session name'))
         self.menu.append(ui.Switch('show_info_menu',self,on_val=True,off_val=False,label='Request additional user info'))
-        self.menu.append(ui.Selector('raw_jpeg',self,selection = [True,False], labels=["bigger file, less CPU", "smaller file, more CPU"],label='compression'))
+        self.menu.append(ui.Selector('raw_jpeg',self,selection = [True,False], labels=["bigger file, less CPU", "smaller file, more CPU"],label='Compression'))
         self.menu.append(ui.Info_Text('Recording the raw eye video is optional. We use it for debugging.'))
         self.menu.append(ui.Switch('record_eye',self,on_val=True,off_val=False,label='Record eye'))
-        self.menu.append(ui.Selector('audio_src',self, selection=self.audio_devices_dict.keys()))
+        self.menu.append(ui.Selector('audio_src',self, selection=self.audio_devices_dict.keys(),label='Audio Source'))
 
         self.button = ui.Thumb('running',self,setter=self.toggle,label='Record',hotkey='r')
         self.button.on_color[:] = (1,.0,.0,.8)
@@ -170,15 +167,23 @@ class Recorder(Plugin):
             self.start()
 
     def on_notify(self,notification):
-        if notification['subject'] == 'rec_should_start':
+
+        # notification wants to be recorded
+        if notification.get('record',False) and self.running:
+            self.data['notifications'].append(notification)
+
+
+        # Remote has started recording, we should start as well.
+        elif notification['subject'] == 'rec_started' and notification.get('source','local') != 'local':
             if self.running:
                 logger.warning('Recording is already running!')
             else:
                 self.set_session_name(notification["session_name"])
-                self.start(network_propagate=notification.get('network_propagate',True))
-        elif notification['subject'] == 'rec_should_stop':
+                self.start(network_propagate=False)
+        # Remote has stopped recording, we should stop as well.
+        elif notification['subject'] == 'rec_stopped' and notification.get('source','local') != 'local':
             if self.running:
-                self.stop(network_propagate=notification.get('network_propagate',True))
+                self.stop(network_propagate=False)
             else:
                 logger.warning('Recording is already stopped!')
 
@@ -189,7 +194,7 @@ class Recorder(Plugin):
 
     def start(self,network_propagate=True):
         self.timestamps = []
-        self.data = {'pupil_positions':[],'gaze_positions':[]}
+        self.data = {'pupil_positions':[],'gaze_positions':[],'notifications':[]}
         self.pupil_pos_list = []
         self.gaze_pos_list = []
 
@@ -238,10 +243,12 @@ class Recorder(Plugin):
         else:
             self.video_path = os.path.join(self.rec_path, "world.mp4")
             self.writer = AV_Writer(self.video_path,fps=self.g_pool.capture.frame_rate)
+
         # positions path to eye process
         if self.record_eye:
-            for tx in self.g_pool.eye_tx:
-                tx.send((self.rec_path,self.raw_jpeg))
+            for alive, pipe in zip(self.g_pool.eyes_are_alive,self.g_pool.eye_pipes):
+                if alive.value:
+                    pipe.send( ('Rec_Start',(self.rec_path,self.raw_jpeg) ) )
 
         if self.show_info_menu:
             self.open_info_menu()
@@ -275,19 +282,12 @@ class Recorder(Plugin):
     def update(self,frame,events):
         if self.running:
             self.data['pupil_positions'] += events['pupil_positions']
-            self.data['gaze_positions'] += events['gaze_positions']
+            self.data['gaze_positions'] += events.get('gaze_positions',[])
             self.timestamps.append(frame.timestamp)
             self.writer.write_video_frame(frame)
             self.frame_count += 1
 
-            # cv2.putText(frame.img, "Frame %s"%self.frame_count,(200,200), cv2.FONT_HERSHEY_SIMPLEX,1,(255,100,100))
-            for p in events['pupil_positions']:
-                pupil_pos = p['timestamp'],p['confidence'],p['id'],p['norm_pos'][0],p['norm_pos'][1],p['diameter']
-                self.pupil_pos_list.append(pupil_pos)
-
-            for g in events.get('gaze_positions',[]):
-                gaze_pos = g['timestamp'],g['confidence'],g['norm_pos'][0],g['norm_pos'][1]
-                self.gaze_pos_list.append(gaze_pos)
+            # # cv2.putText(frame.img, "Frame %s"%self.frame_count,(200,200), cv2.FONT_HERSHEY_SIMPLEX,1,(255,100,100))
 
             self.button.status_text = self.get_rec_time_str()
 
@@ -297,19 +297,11 @@ class Recorder(Plugin):
         self.writer = None
 
         if self.record_eye:
-            for tx in self.g_pool.eye_tx:
-                try:
-                    tx.send((None,None))
-                except:
-                    logger.warning("Could not stop eye-recording. Please report this bug!")
+            for alive, pipe in zip(self.g_pool.eyes_are_alive,self.g_pool.eye_pipes):
+                if alive.value:
+                    pipe.send(('Rec_Stop',None))
 
         save_object(self.data,os.path.join(self.rec_path, "pupil_data"))
-
-        gaze_list_path = os.path.join(self.rec_path, "gaze_positions.npy")
-        np.save(gaze_list_path,np.asarray(self.gaze_pos_list))
-
-        pupil_list_path = os.path.join(self.rec_path, "pupil_positions.npy")
-        np.save(pupil_list_path,np.asarray(self.pupil_pos_list))
 
         timestamps_path = os.path.join(self.rec_path, "world_timestamps.npy")
         # ts = sanitize_timestamps(np.array(self.timestamps))
@@ -320,12 +312,10 @@ class Recorder(Plugin):
             copy2(os.path.join(self.g_pool.user_dir,"surface_definitions"),os.path.join(self.rec_path,"surface_definitions"))
         except:
             logger.info("No surface_definitions data found. You may want this if you do marker tracking.")
-
         try:
-            copy2(os.path.join(self.g_pool.user_dir,"cal_pt_cloud.npy"),os.path.join(self.rec_path,"cal_pt_cloud.npy"))
+            copy2(os.path.join(self.g_pool.user_dir,"user_calibration_data"),os.path.join(self.rec_path,"user_calibration_data"))
         except:
-            logger.warning("No calibration data found. Please calibrate first.")
-
+            logger.warning("No user calibration data found. Please calibrate first.")
         try:
             copy2(os.path.join(self.g_pool.user_dir,"camera_calibration"),os.path.join(self.rec_path,"camera_calibration"))
         except:
@@ -333,11 +323,6 @@ class Recorder(Plugin):
 
         try:
             with open(self.meta_info_path, 'a') as f:
-                f.write("Duration Time\t"+ self.get_rec_time_str()+ "\n")
-                if self.g_pool.binocular:
-                    f.write("Eye Mode\tbinocular\n")
-                else:
-                    f.write("Eye Mode\tmonocular\n")
                 f.write("Duration Time\t"+ self.get_rec_time_str()+ "\n")
                 f.write("World Camera Frames\t"+ str(self.frame_count)+ "\n")
                 f.write("World Camera Resolution\t"+ str(self.g_pool.capture.frame_size[0])+"x"+str(self.g_pool.capture.frame_size[1])+"\n")

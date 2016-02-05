@@ -1,9 +1,9 @@
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
- Copyright (C) 2012-2015  Pupil Labs
+ Copyright (C) 2012-2016  Pupil Labs
 
- Distributed under the terms of the CC BY-NC-SA License.
+ Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
@@ -15,8 +15,8 @@ from methods import normalize,denormalize
 from gl_utils import adjust_gl_view,clear_gl_screen,basic_gl_setup
 import OpenGL.GL as gl
 from glfw import *
-import calibrate
 from circle_detector import get_candidate_ellipses
+from file_methods import load_object,save_object
 
 import audio
 
@@ -25,7 +25,7 @@ from pyglui.cygl.utils import draw_points, draw_points_norm, draw_polyline, draw
 from pyglui.pyfontstash import fontstash
 from pyglui.ui import get_opensans_font_path
 from plugin import Calibration_Plugin
-from gaze_mappers import Simple_Gaze_Mapper
+from finish_calibration import finish_calibration
 
 #logging
 import logging
@@ -151,6 +151,10 @@ class Screen_Marker_Calibration(Calibration_Plugin):
 
 
     def start(self):
+        # ##############
+        # DEBUG
+        #self.stop()
+
         audio.say("Starting Calibration")
         logger.info("Starting Calibration")
         self.sites = [  (.25, .5), (0,.5),
@@ -184,7 +188,6 @@ class Screen_Marker_Calibration(Calibration_Plugin):
             #Register callbacks
             glfwSetFramebufferSizeCallback(self._window,on_resize)
             glfwSetKeyCallback(self._window,self.on_key)
-            glfwSetWindowCloseCallback(self._window,self.on_close)
             glfwSetMouseButtonCallback(self._window,self.on_button)
             on_resize(self._window,*glfwGetFramebufferSize(self._window))
 
@@ -203,46 +206,33 @@ class Screen_Marker_Calibration(Calibration_Plugin):
     def on_key(self,window, key, scancode, action, mods):
         if action == GLFW_PRESS:
             if key == GLFW_KEY_ESCAPE:
-                self.stop()
+                self.clicks_to_close = 0
 
     def on_button(self,window,button, action, mods):
         if action ==GLFW_PRESS:
             self.clicks_to_close -=1
 
-    def on_close(self,window=None):
-        if self.active:
-            self.stop()
 
     def stop(self):
+        # TODO: redundancy between all gaze mappers -> might be moved to parent class
         audio.say("Stopping Calibration")
-        logger.info('Stopping Calibration')
-        self.screen_marker_state = 0
-        self.active = False
+        logger.info("Stopping Calibration")
+        self.smooth_pos = 0,0
+        self.counter = 0
         self.close_window()
+        self.active = False
         self.button.status_text = ''
-
-        cal_pt_cloud = calibrate.preprocess_data(self.pupil_list,self.ref_list)
-
-        logger.info("Collected %s data points." %len(cal_pt_cloud))
-
-        if len(cal_pt_cloud) < 20:
-            logger.warning("Did not collect enough data.")
-            return
-
-        cal_pt_cloud = np.array(cal_pt_cloud)
-        map_fn,params = calibrate.get_map_from_cloud(cal_pt_cloud,self.g_pool.capture.frame_size,return_params=True)
-        np.save(os.path.join(self.g_pool.user_dir,'cal_pt_cloud.npy'),cal_pt_cloud)
-
-        #replace current gaze mapper with new
-        self.g_pool.plugins.add(Simple_Gaze_Mapper,args={'params':params})
+        finish_calibration(self.g_pool,self.pupil_list,self.ref_list)
 
 
     def close_window(self):
         if self._window:
             # enable mouse display
+            active_window = glfwGetCurrentContext();
             glfwSetInputMode(self._window,GLFW_CURSOR,GLFW_CURSOR_NORMAL)
             glfwDestroyWindow(self._window)
             self._window = None
+            glfwMakeContextCurrent(active_window)
 
 
     def update(self,frame,events):
@@ -258,7 +248,7 @@ class Screen_Marker_Calibration(Calibration_Plugin):
             self.candidate_ellipses = get_candidate_ellipses(gray_img,
                                                             area_threshold=self.area_threshold,
                                                             dist_threshold=self.dist_threshold,
-                                                            min_ring_count=4,
+                                                            min_ring_count=5,
                                                             visual_debug=False)
 
             if len(self.candidate_ellipses) > 0:
@@ -277,6 +267,7 @@ class Screen_Marker_Calibration(Calibration_Plugin):
             if on_position and self.detected:
                 ref = {}
                 ref["norm_pos"] = self.pos
+                ref["screen_pos"] = marker_pos
                 ref["timestamp"] = frame.timestamp
                 self.ref_list.append(ref)
 
@@ -331,6 +322,10 @@ class Screen_Marker_Calibration(Calibration_Plugin):
 
     def gl_display_in_window(self):
         active_window = glfwGetCurrentContext()
+        if glfwWindowShouldClose(self._window):
+            self.close_window()
+            return
+
         glfwMakeContextCurrent(self._window)
 
         clear_gl_screen()
@@ -357,9 +352,9 @@ class Screen_Marker_Calibration(Calibration_Plugin):
         #some feedback on the detection state
 
         if self.detected and self.on_position:
-            draw_points([screen_pos],size=5,color=RGBA(0.,1.,0.,alpha),sharpness=0.95)
+            draw_points([screen_pos],size=5,color=RGBA(0.,.8,0.,alpha),sharpness=0.5)
         else:
-            draw_points([screen_pos],size=5,color=RGBA(1.,0.,0.,alpha),sharpness=0.95)
+            draw_points([screen_pos],size=5,color=RGBA(0.8,0.,0.,alpha),sharpness=0.5)
 
         if self.clicks_to_close <5:
             self.glfont.set_size(int(p_window_size[0]/30.))

@@ -4,6 +4,7 @@
 import platform
 
 av_hidden_imports = ['av.format','av.packet','av.frame','av.stream','av.plane','av.audio.plane','av.audio.stream','av.subtitles','av.subtitles.stream','av.subtitles.subtitle','av.video.reformatter','av.video.plane']
+pyglui_hidden_imports = ['pyglui.pyfontstash.fontstash','pyglui.cygl.shader','pyglui.cygl.utils']
 
 
 if platform.system() == 'Darwin':
@@ -11,7 +12,7 @@ if platform.system() == 'Darwin':
 
     a = Analysis(['../pupil_src/player/main.py'],
                  pathex=['../pupil_src/shared_modules/'],
-                 hiddenimports=['pyglui.pyfontstash.fontstash','pyglui.cygl.shader','pyglui.cygl.utils']+av_hidden_imports,
+                 hiddenimports=[]+av_hidden_imports+pyglui_hidden_imports,
                  hookspath=None,
                  runtime_hooks=None,
                  excludes=['pyx_compiler','matplotlib'])
@@ -32,7 +33,7 @@ if platform.system() == 'Darwin':
                    a.binaries - libSystem,
                    a.zipfiles,
                    a.datas,
-                   [('libglfw3.dylib', '/usr/local/Cellar/glfw3/3.1.1/lib/libglfw3.dylib','BINARY')],                   [('methods.so', '../pupil_src/shared_modules/c_methods/methods.so','BINARY')],
+                   [('libglfw3.dylib', '/usr/local/Cellar/glfw3/3.1.2/lib/libglfw3.dylib','BINARY')],                   [('methods.so', '../pupil_src/shared_modules/c_methods/methods.so','BINARY')],
                    [('OpenSans-Regular.ttf','/usr/local/lib/python2.7/site-packages/pyglui/OpenSans-Regular.ttf','DATA')],
                    [('Roboto-Regular.ttf','/usr/local/lib/python2.7/site-packages/pyglui/Roboto-Regular.ttf','DATA')],
                    strip=None,
@@ -47,7 +48,7 @@ if platform.system() == 'Darwin':
 elif platform.system() == 'Linux':
     a = Analysis(['../pupil_src/player/main.py'],
                  pathex=['../pupil_src/shared_modules/'],
-                 hiddenimports=['pyglui.pyfontstash.fontstash','pyglui.cygl.shader','pyglui.cygl.utils']+av_hidden_imports,
+                 hiddenimports=[]+av_hidden_imports+pyglui_hidden_imports,
                  hookspath=None,
                  runtime_hooks=None,
                  excludes=['pyx_compiler','matplotlib'])
@@ -62,8 +63,16 @@ elif platform.system() == 'Linux':
               upx=True,
               console=True)
 
+    # any libX file should be taken from distro else not protable between Ubuntu 12.04 and 14.04
+    binaries = [b for b in a.binaries if not "libX" in b[0] and not "libxcb" in b[0]]
+    # libc is also not meant to travel with the bundle. Otherwise pyre.helpers with segfault.
+    binaries = [b for b in binaries if not "libc.so" in b[0]]
+
+    # libstdc++ is also not meant to travel with the bundle. Otherwise nvideo opengl drivers will fail to load.
+    binaries = [b for b in binaries if not "libstdc++.so" in b[0]]
+
     coll = COLLECT(exe,
-                   [b for b in a.binaries if not "libX" in b[0] and not "libxcb" in b[0]], # any libX file should be taken from distro else not protable between Ubuntu 12.04 and 14.04
+                   binaries,
                    a.zipfiles,
                    a.datas,
                    [('methods.so', '../pupil_src/shared_modules/c_methods/methods.so','BINARY')],

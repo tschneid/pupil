@@ -1,9 +1,9 @@
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
- Copyright (C) 2012-2015  Pupil Labs
+ Copyright (C) 2012-2016  Pupil Labs
 
- Distributed under the terms of the CC BY-NC-SA License.
+ Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
@@ -12,7 +12,8 @@ import os
 import cv2
 import numpy as np
 from plugin import Plugin
-from calibration_routines.calibrate import get_map_from_cloud
+from calibration_routines.calibrate import calibrate_2d_polynomial
+from file_methods import load_object
 
 from pyglui import ui
 from pyglui.cygl.utils import RGBA
@@ -27,28 +28,41 @@ class Show_Calibration(Plugin):
     """Calibration results visualization plugin"""
     def __init__(self,g_pool):
         super(Show_Calibration, self).__init__(g_pool)
+
         self.menu=None
+
+        logger.error("This will be implemented as part of gaze mapper soon.")
+        self.alive= False
+        return
+
 
         width,height = self.g_pool.capture.frame_size
 
         if g_pool.app == 'capture':
-            cal_pt_path =  os.path.join(g_pool.user_dir,"cal_pt_cloud.npy")
+            cal_pt_path =  os.path.join(g_pool.user_dir,"user_calibration_data")
         else:
-            cal_pt_path =  os.path.join(g_pool.rec_dir,"cal_pt_cloud.npy")
+            cal_pt_path =  os.path.join(g_pool.rec_dir,"user_calibration_data")
 
         try:
-            cal_pt_cloud = np.load(cal_pt_path)
+            user_calibration_data = load_object(cal_pt_path)
         except:
             logger.warning("Please calibrate first")
             self.close()
             return
 
-        map_fn,inlier_map = get_map_from_cloud(cal_pt_cloud,(width, height),return_inlier_map=True)
-        cal_pt_cloud[:,0:2] =  np.array(map_fn(cal_pt_cloud[:,0:2].transpose())).transpose()
+        if self.g_pool.binocular:
+
+            fn_input_eye1 = cal_pt_cloud[:,2:4].transpose()
+            cal_pt_cloud[:,0:2] =  np.array(map_fn(fn_input_eye0, fn_input_eye1)).transpose()
+            cal_pt_cloud[:,2:4] = cal_pt_cloud[:,4:6]
+        else:
+            fn_input = cal_pt_cloud[:,0:2].transpose()
+            cal_pt_cloud[:,0:2] =  np.array(map_fn(fn_input)).transpose()
+
         ref_pts = cal_pt_cloud[inlier_map][:,np.newaxis,2:4]
         ref_pts = np.array(ref_pts,dtype=np.float32)
-        logger.debug("calibration ref_pts %s"%ref_pts)
 
+        logger.debug("calibration ref_pts %s"%ref_pts)
         if len(ref_pts)== 0:
             logger.warning("Calibration is bad. Please re-calibrate")
             self.close()
@@ -70,6 +84,7 @@ class Show_Calibration(Plugin):
 
     def init_gui(self):
         self.menu = ui.Scrolling_Menu('Calibration Results',pos=(300,300),size=(300,300))
+        self.menu.append(ui.Button('Close', self.close))
         self.info = ui.Info_Text("Yellow: calibration error; Red: discarded outliers; Outline: calibrated area.")
         self.menu.append(self.info)
         self.menu.append(ui.Text_Input('inlier_count',self, label='Number of used samples'))
@@ -79,7 +94,6 @@ class Show_Calibration(Plugin):
         self.menu.append(ui.Text_Input('calib_area_ratio',self, label='Fraction of calibrated screen area'))
         self.menu.elements[-1].read_only=True
 
-        self.menu.append(ui.Button('Close', self.close))
         self.g_pool.gui.append(self.menu)
 
     def deinit_gui(self):
@@ -103,7 +117,7 @@ class Show_Calibration(Plugin):
 
 if __name__ == '__main__':
     cal_pt_cloud = np.load("cal_pt_cloud.npy")
-    map_fn,inlier_map = get_map_from_cloud(cal_pt_cloud,(1280,720),return_inlier_map=True)
+    map_fn,inlier_map = calibrate_2d_polynomial(cal_pt_cloud,(1280,720),return_inlier_map=True)
     # print cal_pt_cloud[inlier_map][:,0:2].shape
     # print cal_pt_cloud[inlier_map][0,2:4]
     inlier = np.concatenate((cal_pt_cloud[inlier_map][:,0:2],cal_pt_cloud[inlier_map][:,2:4]),axis=1)

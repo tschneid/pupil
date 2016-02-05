@@ -1,9 +1,9 @@
 '''
 (*)~----------------------------------------------------------------------------------
  Pupil - eye tracking platform
- Copyright (C) 2012-2015  Pupil Labs
+ Copyright (C) 2012-2016  Pupil Labs
 
- Distributed under the terms of the CC BY-NC-SA License.
+ Distributed under the terms of the GNU Lesser General Public License (LGPL v3.0).
  License details are in the file license.txt, distributed as part of this software.
 ----------------------------------------------------------------------------------~(*)
 '''
@@ -51,6 +51,7 @@ class Vis_Circle(Plugin):
         self.menu = ui.Scrolling_Menu('Gaze Circle')
         # add menu to the window
         self.g_pool.gui.append(self.menu)
+        self.menu.append(ui.Button('Close',self.unset_alive))
         self.menu.append(ui.Slider('radius',self,min=1,step=1,max=100,label='Radius'))
         self.menu.append(ui.Slider('thickness',self,min=1,step=1,max=15,label='Stroke width'))
         self.menu.append(ui.Switch('fill',self,label='Fill'))
@@ -64,7 +65,6 @@ class Vis_Circle(Plugin):
         color_menu.append(ui.Slider('a',self,min=0.0,step=0.05,max=1.0,label='Alpha'))
         self.menu.append(color_menu)
 
-        self.menu.append(ui.Button('remove',self.unset_alive))
 
     def deinit_gui(self):
         if self.menu:
